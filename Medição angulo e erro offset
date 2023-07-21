@@ -1,0 +1,92 @@
+#include <Wire.h>
+#include <Math.h>
+
+const int MPU = 0x68;
+int cont = 0;
+
+double AccX, AccY, AccZ, AccXf, AccYf, AccZf, theta_pitch, theta_yaw;
+double GyroX, GyroY, GyroZ;
+unsigned long prevTime = 0;
+
+void setup() {
+  Serial.begin(9600);
+
+  Wire.begin();
+  Wire.beginTransmission(MPU);
+  Wire.write(0x6B);
+  Wire.write(0);
+  Wire.endTransmission(true);
+
+  Wire.beginTransmission(MPU);
+  Wire.write(0x1B); // Registro de configuração do giroscópio
+  Wire.write(0x08); // Define a escala completa para o giroscópio (+/- 500 graus por segundo)
+  Wire.endTransmission();
+}
+
+void loop() {
+  // Obtém o tempo atual
+  unsigned long currentTime = millis();
+  // Calcula o tempo decorrido desde a última iteração do loop
+  float dt = (currentTime - prevTime) / 1000.0; // Converter para segundos
+  prevTime = currentTime;
+
+  // Lê os dados do acelerômetro
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU, 14, true);
+  AccX = Wire.read() << 8 | Wire.read();
+  AccY = Wire.read() << 8 | Wire.read();
+  AccZ = Wire.read() << 8 | Wire.read();
+
+  // Aplica correções e converte para unidades 'g'
+  AccXf = ((AccX / 16384) - 0.01645);
+  AccYf = ((AccY / 16384) + 0.0011);
+  AccZf = ((AccZ / 16384) + 0.04805);
+
+  // Calcula o ângulo de inclinação (pitch) usando os dados do acelerômetro
+  theta_pitch = atan2(AccYf, sqrt(square(AccXf) + square(AccZf))) * 180.0 / M_PI;
+
+  // Lê os dados do giroscópio
+  Wire.beginTransmission(MPU);
+  Wire.write(0x43);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU, 6, true);
+  GyroX = (Wire.read() << 8 | Wire.read()) / 131.0; // Converter para graus por segundo
+  GyroY = (Wire.read() << 8 | Wire.read()) / 131.0;
+  GyroZ = (Wire.read() << 8 | Wire.read()) / 131.0;
+
+  // Calcula o ângulo de inclinação em relação ao eixo Z (yaw) usando integração numérica (Regra do Trapézio)
+  theta_yaw += (GyroZ * dt);
+
+  // Calcula o erro (diferença entre o ângulo de inclinação do acelerômetro e o ângulo de inclinação do giroscópio)
+  double error = theta_pitch - theta_yaw;
+
+  // Imprime os dados brutos do acelerômetro
+  Serial.print("Acc X: ");
+  Serial.print(AccX / 16384);
+  Serial.print(" Y: ");
+  Serial.print(AccY / 16384);
+  Serial.print(" Z: ");
+  Serial.print(AccZ / 16384);
+
+  // Imprime os dados do acelerômetro corrigidos
+  Serial.print("          Acc X com Offset: ");
+  Serial.print(AccXf);
+  Serial.print("      Y com Offset: ");
+  Serial.print(AccYf);
+  Serial.print("      Z com Offset: ");
+  Serial.print(AccZf);
+
+  // Imprime o ângulo de inclinação (pitch) e o ângulo em relação ao eixo Z (yaw)
+  Serial.print("      Ângulo de Inclinação (Pitch): ");
+  Serial.print(theta_pitch);
+  Serial.print("      Ângulo em relação ao Eixo Z (Yaw): ");
+  Serial.print(theta_yaw);
+
+  // Imprime o erro
+  Serial.print("      Erro: ");
+  Serial.println(error);
+
+  delay(100);
+}
